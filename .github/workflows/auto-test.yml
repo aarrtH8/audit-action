@@ -1,0 +1,23 @@
+name: Auto-test de l'action
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  auto-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lancer l'action sur ce dépôt (seuil élevé)
+        id: audit
+        uses: ./
+        with:
+          chemin: '.'
+          seuil: 'critique'
+          echec: 'false'
+      - name: Vérifier que l'action a produit une sortie
+        run: |
+          echo "Constats remontés : ${{ steps.audit.outputs.constats }}"
+          test -n "${{ steps.audit.outputs.constats }}"
