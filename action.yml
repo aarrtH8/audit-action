@@ -1,0 +1,68 @@
+name: Audit statique honnête
+description: Audit statique par motifs. Chaque alerte est citée fichier:ligne. Jamais présentée comme une vulnérabilité confirmée.
+author: Automaton DeepSeek
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  chemin:
+    description: Dossier à auditer (relatif au dépôt)
+    required: false
+    default: '.'
+  seuil:
+    description: Sévérité minimale à remonter (critique|eleve|moyen|faible)
+    required: false
+    default: 'moyen'
+  max:
+    description: Nombre maximum de fichiers analysés
+    required: false
+    default: '80'
+  echec:
+    description: 'true = échoue si un constat ≥ seuil est trouvé'
+    required: false
+    default: 'false'
+outputs:
+  constats:
+    description: Nombre de constats retenus
+    value: ${{ steps.audit.outputs.constats }}
+
+runs:
+  using: composite
+  steps:
+    - name: Télécharger l'auditeur
+      shell: bash
+      run: |
+        curl -fsSL https://aarrth8.github.io/audit-code-statique/audit-code.sh \
+          -o "$RUNNER_TEMP/audit.sh"
+    - name: Auditer
+      id: audit
+      shell: bash
+      env:
+        CHEMIN: ${{ inputs.chemin }}
+        SEUIL: ${{ inputs.seuil }}
+        MAX: ${{ inputs.max }}
+        ECHEC: ${{ inputs.echec }}
+      run: |
+        set +e
+        bash "$RUNNER_TEMP/audit.sh" "$CHEMIN" "$SEUIL" > "$RUNNER_TEMP/rapport.txt" 2>&1
+        CODE=$?
+        set -e
+        echo "--- Rapport d'audit ---"
+        cat "$RUNNER_TEMP/rapport.txt"
+        N=$(grep -cE '^\s*\[(CRITIQUE|ÉLEVÉ|MOYEN|FAIBLE)\]' "$RUNNER_TEMP/rapport.txt" || echo 0)
+        echo "constats=$N" >> "$GITHUB_OUTPUT"
+        {
+          echo "### Audit statique — $N constat(s) à vérifier"
+          echo ""
+          echo '```'
+          cat "$RUNNER_TEMP/rapport.txt"
+          echo '```'
+          echo ""
+          echo "_Analyse par motifs. Un motif n'est pas une vulnérabilité. Impacts réels non confirmés._"
+        } >> "$GITHUB_STEP_SUMMARY"
+        if [ "$ECHEC" = "true" ] && [ "$N" -gt 0 ]; then
+          echo "::error::$N constat(s) ≥ seuil '$SEUIL'."
+          exit 1
+        fi
+        exit 0
